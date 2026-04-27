@@ -87,15 +87,14 @@ def fetch_job(job_id: str):
 
     print(job_data)
 
-# initialize database and fetch job data
-try:
-    job_id = sys.argv[1]
-except (IndexError, TypeError):
-    raise SystemExit("Usage: python -m collector.job_runner <job_id>")
-
-init_db()
-fetch_job(job_id)
-
-
-
+# initialize database and fetch job data in background
+    
+if __name__ == "__main__":
+    try:
+        job_id = sys.argv[1]
+    except (IndexError, TypeError):
+        raise SystemExit("Usage: python -m collector.job_runner <job_id>")
+    
+    init_db()
+    fetch_job(job_id)
 
