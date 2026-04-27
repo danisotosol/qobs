@@ -4,7 +4,7 @@ from sqlalchemy.orm import sessionmaker
 from pydantic import BaseModel
 from datetime import datetime
 from fastapi import HTTPException
-from collector.job_runner import fetch_job
+from collector.job_runner import fetch_job, sync_jobs
 from fastapi.middleware.cors import CORSMiddleware
 from collections import defaultdict
 
@@ -49,6 +49,10 @@ class CircuitResponse(BaseModel):
     num_qubits: int | None = None
     circuit_depth: int | None = None
     created_at: datetime
+
+class SyncResponse(BaseModel):
+    new: int
+    existing: int
 
 
 # get all jobs
@@ -123,6 +127,15 @@ def get_throughput():
             hour = job.created_at.replace(minute=0, second=0, microsecond=0)
             buckets[hour] += 1
     return [{"hour": k.isoformat(), "count": v} for k, v in sorted(buckets.items())]
+
+# sync: pull recent jobs from IBM Quantum and store new ones
+@app.post("/sync", response_model=SyncResponse)
+def sync_ibm():
+    try:
+        result = sync_jobs()
+        return SyncResponse(new=result["new"], existing=result["existing"])
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 # delete a job
 @app.delete("/jobs/{job_id}", response_model=JobResponse)

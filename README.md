@@ -1,5 +1,5 @@
 <h1 align="center">
-  <img src="assets/logo.svg" width="80" height="80" alt="QOBS" /><br />
+  <img src="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTIwIiBoZWlnaHQ9IjEyMCIgdmlld0JveD0iMCAwIDEyMCAxMjAiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGNpcmNsZSBjeD0iNjAiIGN5PSI2MCIgcj0iNDUiIHN0cm9rZT0iIzVjYzhkOCIgc3Ryb2tlLXdpZHRoPSI3Ii8+PGVsbGlwc2UgY3g9IjYwIiBjeT0iNjAiIHJ4PSI0NSIgcnk9IjE3LjUiIHN0cm9rZT0iIzVjYzhkOCIgc3Ryb2tlLXdpZHRoPSI1LjUiIG9wYWNpdHk9IjAuNyIvPjxlbGxpcHNlIGN4PSI2MCIgY3k9IjYwIiByeD0iNDUiIHJ5PSIxNy41IiBzdHJva2U9IiNiODcwZDgiIHN0cm9rZS13aWR0aD0iNS41IiBvcGFjaXR5PSIwLjciIHRyYW5zZm9ybT0icm90YXRlKDYwIDYwIDYwKSIvPjxjaXJjbGUgY3g9IjYwIiBjeT0iNjAiIHI9IjEwIiBmaWxsPSIjNWNjOGQ4Ii8+PC9zdmc+" width="80" height="80" alt="QOBS" /><br />
   QOBS
   <br />
   <small>Quantum Job Observability System</small>
@@ -75,7 +75,7 @@ Records the gap between job submission and device pickup for every run — the m
 Tracks how long the QPU actually ran your circuit, separate from queue overhead, so you can distinguish hardware variability from scheduling variability. Critical for benchmarking circuit depth against real device performance.
 
 **Live observability dashboard.**
-React frontend with a sticky live/paused toggle, metric summary cards, a job throughput chart, and a full searchable job history table — all updating in real time from the local API.
+React frontend with a live indicator, metric summary cards, a job throughput chart, and a full searchable job history table — all updating in real time from the local API.
 
 **Metric cards with sparklines.**
 At-a-glance view of total jobs collected, average queue time, average execution time, and total shots fired, each with a trend sparkline built from actual job data.
@@ -89,8 +89,14 @@ The Backends page aggregates all stored jobs by device and shows each backend's 
 **Circuit tracking.**
 The collector extracts `num_qubits` and `circuit_depth` from every submitted circuit and persists them alongside the job. The Circuits page surfaces this data in a searchable table, making it easy to correlate circuit complexity with queue and execution time. If a job already exists in the database without circuit metadata, re-posting its ID will fetch the circuit data from IBM and update the record without duplicating or overwriting any other fields.
 
+**One-click sync.**
+The Overview page has a "Sync with IBM" button that calls `POST /sync`, which pulls the 100 most recent IBM Quantum jobs and stores any that are not yet in the database — no manual job IDs required. The result shows how many jobs were new and how many were already collected.
+
 **REST API.**
 Clean FastAPI endpoints expose your full job history as JSON, so you can query it from notebooks, scripts, or any other tool without touching the dashboard.
+
+**Docker support.**
+A single `docker-compose up` builds and starts both the FastAPI backend and the React frontend. The SQLite database is mounted as a host volume so data persists across container restarts. The IBM Quantum token is read from `.env` at runtime.
 
 **Local-first, zero lock-in.**
 Everything runs on your machine. Data lives in a single SQLite file. No cloud services, no third-party accounts, no telemetry — only the IBM Quantum credentials you already have.
@@ -162,6 +168,29 @@ collector/run_circuit.py   ──►  collector/job_runner.py
 
 ---
 
+### Docker (recommended)
+
+The fastest way to run QOBS. Requires [Docker](https://docs.docker.com/get-docker/) with Compose.
+
+```bash
+git clone https://github.com/danisotosol/qobs.git
+cd qobs
+
+# Create your .env with your IBM Quantum token
+echo "IBM_TOKEN=your_api_token_here" > .env
+
+docker-compose up --build
+```
+
+- API → `http://localhost:8000`
+- Dashboard → `http://localhost:5173`
+
+The SQLite database is mounted from the host at `./quantum_jobs.db`, so data persists across restarts.
+
+---
+
+### Manual setup
+
 ### 1. Clone the repository
 
 ```bash
@@ -219,6 +248,7 @@ The dashboard opens at `http://localhost:5173`.
 | `GET` | `/jobs/{job_id}` | Return a single job by IBM job ID |
 | `POST` | `/jobs` | Fetch a job from IBM Quantum and store it |
 | `DELETE` | `/jobs/{job_id}` | Delete a job from the database |
+| `POST` | `/sync` | Pull the 100 most recent IBM jobs and store new ones |
 | `GET` | `/backends` | Return aggregated stats per backend |
 | `GET` | `/circuits` | Return all jobs with circuit metadata |
 | `GET` | `/metrics/throughput` | Return hourly job counts for the throughput chart |
@@ -227,6 +257,12 @@ The dashboard opens at `http://localhost:5173`.
 
 ```json
 { "job_id": "crv6x9zy7k2000089g0g" }
+```
+
+**POST `/sync` — response:**
+
+```json
+{ "new": 12, "existing": 88 }
 ```
 
 **Example response:**

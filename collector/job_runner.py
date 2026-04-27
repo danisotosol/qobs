@@ -15,12 +15,11 @@ def parse_timestamp(ts: str) -> datetime:
         return None
     return datetime.fromisoformat(ts.replace("Z", "+00:00")).replace(tzinfo=None)
 
-def fetch_job(job_id: str):
+def fetch_job(job_id: str) -> str:
     """
-    Fetches the job from the IBM Quantum Experience and calculates metrics.
-    get the token from the environment variables
+    Fetches the job from IBM Quantum and stores it. Returns 'existing' if the job
+    was already in the database (circuit metadata patched), 'new' otherwise.
     """
-    # 1. create a session and query the database for the job id
     session = sessionmaker(bind=engine)()
     existing_job = session.query(QuantumJob).filter_by(id=job_id).first()
     if existing_job:
@@ -35,7 +34,7 @@ def fetch_job(job_id: str):
             pass
         session.commit()
         session.close()
-        return
+        return "existing"
 
     # create a session and insert the job data
     
@@ -96,12 +95,31 @@ def fetch_job(job_id: str):
     # create a quantum job object, a quantumjob is an object that represents a quantum job in the database
     # with all the data extracted from the job
     job = QuantumJob(**job_data)
-    # add the job to the session and commit it to the database
     session.add(job)
     session.commit()
     session.close()
 
     print(job_data)
+    return "new"
+
+
+def sync_jobs(limit: int = 100) -> dict:
+    """
+    Pulls up to `limit` recent jobs from IBM Quantum and stores any that are new.
+    Returns a dict with 'new' and 'existing' counts.
+    """
+    token = os.getenv("IBM_TOKEN")
+    service = QiskitRuntimeService(token=token, channel="ibm_quantum_platform")
+    ibm_jobs = service.jobs(limit=limit)
+    new_count = 0
+    existing_count = 0
+    for ibm_job in ibm_jobs:
+        result = fetch_job(ibm_job.job_id())
+        if result == "new":
+            new_count += 1
+        else:
+            existing_count += 1
+    return {"new": new_count, "existing": existing_count}
 
 # initialize database and fetch job data in background
     

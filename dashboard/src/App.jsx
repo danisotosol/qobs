@@ -3,6 +3,8 @@ import { BrowserRouter, Routes, Route, Link, useLocation } from "react-router-do
 import axios from "axios"
 import './App.css'
 
+const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8000"
+
 // ── Formatters ────────────────────────────────────────────────────────────────
 function fmtNum(n, decimals = 1) {
   if (n == null) return "—"
@@ -753,15 +755,36 @@ function Overview() {
   const [throughput, setThroughput] = useState([])
   const [filter, setFilter] = useState("all")
   const [search, setSearch] = useState("")
+  const [syncing, setSyncing] = useState(false)
+  const [syncResult, setSyncResult] = useState(null)
+  const [syncError, setSyncError] = useState(null)
 
-  useEffect(() => {
-    axios.get("http://localhost:8000/jobs")
+  function loadData() {
+    axios.get(`${API_URL}/jobs`)
       .then(r => setJobs(r.data))
       .catch(console.error)
-    axios.get("http://localhost:8000/metrics/throughput")
+    axios.get(`${API_URL}/metrics/throughput`)
       .then(r => setThroughput(r.data.map((d, i) => ({ t: i, hour: d.hour, success: d.count }))))
       .catch(console.error)
-  }, [])
+  }
+
+  useEffect(() => { loadData() }, [])
+
+  useEffect(() => {
+    if (!syncResult) return
+    const timer = setTimeout(() => setSyncResult(null), 8000)
+    return () => clearTimeout(timer)
+  }, [syncResult])
+
+  function handleSync() {
+    setSyncing(true)
+    setSyncResult(null)
+    setSyncError(null)
+    axios.post(`${API_URL}/sync`)
+      .then(r => { setSyncResult(r.data); loadData() })
+      .catch(err => setSyncError(err.response?.data?.detail || "Sync failed"))
+      .finally(() => setSyncing(false))
+  }
 
   const stats = useMemo(() => {
     if (!jobs.length) return { total: 0, avgQueue: 0, avgExec: 0, totalShots: 0 }
@@ -778,23 +801,69 @@ function Overview() {
     <main style={{ padding: "28px 28px 48px", maxWidth: 1480, margin: "0 auto" }}>
 
       {/* page header */}
-      <div style={{ marginBottom: 24 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
-          <h1 style={{ fontSize: 22, fontWeight: 600, margin: 0, letterSpacing: "-0.01em" }}>
-            Quantum Job Observability
-          </h1>
-          <span className="mono" style={{
-            fontSize: 10, color: "var(--accent)",
-            border: "1px solid var(--accent-line)",
-            padding: "2px 6px", borderRadius: 4,
-            textTransform: "uppercase", letterSpacing: "0.1em",
-            background: "var(--accent-dim)",
-          }}>prod</span>
+      <div style={{
+        display: "flex", alignItems: "flex-start",
+        justifyContent: "space-between", marginBottom: 24,
+      }}>
+        <div>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
+            <h1 style={{ fontSize: 22, fontWeight: 600, margin: 0, letterSpacing: "-0.01em" }}>
+              Quantum Job Observability
+            </h1>
+            <span className="mono" style={{
+              fontSize: 10, color: "var(--accent)",
+              border: "1px solid var(--accent-line)",
+              padding: "2px 6px", borderRadius: 4,
+              textTransform: "uppercase", letterSpacing: "0.1em",
+              background: "var(--accent-dim)",
+            }}>prod</span>
+          </div>
+          <p style={{ margin: 0, color: "var(--fg-2)", fontSize: 13 }}>
+            Real-time monitoring of quantum circuit executions across QPU backends
+            — track queue depth and runtime in one place.
+          </p>
         </div>
-        <p style={{ margin: 0, color: "var(--fg-2)", fontSize: 13 }}>
-          Real-time monitoring of quantum circuit executions across QPU backends
-          — track queue depth and runtime in one place.
-        </p>
+
+        {/* sync controls */}
+        <div style={{
+          display: "flex", alignItems: "center", gap: 10,
+          paddingTop: 4, flexShrink: 0,
+        }}>
+          {syncResult && (
+            <span className="mono" style={{ fontSize: 10, color: "var(--fg-2)" }}>
+              <span style={{ color: "var(--green)" }}>{syncResult.new} new</span>
+              {" · "}{syncResult.existing} already collected
+            </span>
+          )}
+          {syncError && (
+            <span className="mono" style={{ fontSize: 10, color: "var(--red)" }}>
+              {syncError}
+            </span>
+          )}
+          <button
+            onClick={handleSync}
+            disabled={syncing}
+            style={{
+              background: syncing
+                ? "var(--bg-2)"
+                : "color-mix(in oklch, var(--accent) 10%, transparent)",
+              border: "1px solid var(--accent-line)",
+              color: syncing ? "var(--fg-3)" : "var(--accent)",
+              fontFamily: "'JetBrains Mono', monospace",
+              fontSize: 11,
+              padding: "6px 14px",
+              borderRadius: "var(--radius)",
+              cursor: syncing ? "default" : "pointer",
+              letterSpacing: "0.04em",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              transition: "all 120ms",
+            }}
+          >
+            {syncing ? "Syncing…" : "↻ Sync with IBM"}
+          </button>
+        </div>
       </div>
 
       {/* metrics row */}
@@ -883,7 +952,7 @@ function JobsPage() {
   const [addError, setAddError] = useState(null)
 
   useEffect(() => {
-    axios.get("http://localhost:8000/jobs")
+    axios.get(`${API_URL}/jobs`)
       .then(r => setJobs(r.data))
       .catch(console.error)
   }, [])
@@ -892,14 +961,14 @@ function JobsPage() {
     if (!addInput.trim()) return
     setAdding(true)
     setAddError(null)
-    axios.post("http://localhost:8000/jobs", { job_id: addInput.trim() })
+    axios.post(`${API_URL}/jobs`, { job_id: addInput.trim() })
       .then(r => { setJobs(prev => [r.data, ...prev]); setAddInput("") })
       .catch(err => setAddError(err.response?.data?.detail || "Failed to add job"))
       .finally(() => setAdding(false))
   }
 
   function deleteJob(jobId) {
-    axios.delete(`http://localhost:8000/jobs/${jobId}`)
+    axios.delete(`${API_URL}/jobs/${jobId}`)
       .then(() => setJobs(prev => prev.filter(j => j.id !== jobId)))
       .catch(err => console.error("Delete failed:", err))
   }
@@ -932,7 +1001,7 @@ function BackendsPage() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    axios.get("http://localhost:8000/backends")
+    axios.get(`${API_URL}/backends`)
       .then(r => setBackends(r.data))
       .catch(console.error)
       .finally(() => setLoading(false))
@@ -1016,7 +1085,7 @@ function CircuitsPage() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    axios.get("http://localhost:8000/circuits")
+    axios.get(`${API_URL}/circuits`)
       .then(r => setCircuits(r.data))
       .catch(console.error)
       .finally(() => setLoading(false))
