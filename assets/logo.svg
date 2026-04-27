@@ -1,0 +1,10 @@
+<svg width="120" height="120" viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Outer orbit circle -->
+  <circle cx="60" cy="60" r="45" stroke="#5cc8d8" stroke-width="7"/>
+  <!-- First equatorial ellipse — cyan -->
+  <ellipse cx="60" cy="60" rx="45" ry="17.5" stroke="#5cc8d8" stroke-width="5.5" opacity="0.7"/>
+  <!-- Second equatorial ellipse — magenta, rotated 60° (Bloch sphere second axis) -->
+  <ellipse cx="60" cy="60" rx="45" ry="17.5" stroke="#b870d8" stroke-width="5.5" opacity="0.7" transform="rotate(60 60 60)"/>
+  <!-- State vector / qubit center -->
+  <circle cx="60" cy="60" r="10" fill="#5cc8d8"/>
+</svg>
