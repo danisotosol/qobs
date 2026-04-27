@@ -22,10 +22,18 @@ def fetch_job(job_id: str):
     """
     # 1. create a session and query the database for the job id
     session = sessionmaker(bind=engine)()
-    # 2. if the job id already exists, close the session and return
     existing_job = session.query(QuantumJob).filter_by(id=job_id).first()
     if existing_job:
-        print(f"The job {job_id} already exists in the database. Skipping...")
+        token = os.getenv("IBM_TOKEN")
+        service = QiskitRuntimeService(token=token, channel="ibm_quantum_platform")
+        job = service.job(job_id=job_id)
+        try:
+            circuit = job.inputs["pubs"][0][0]
+            existing_job.num_qubits = circuit.num_qubits
+            existing_job.circuit_depth = circuit.depth()
+        except (KeyError, IndexError, TypeError, AttributeError):
+            pass
+        session.commit()
         session.close()
         return
 
@@ -61,13 +69,19 @@ def fetch_job(job_id: str):
     if completed and running:
         execution_time = (completed - running).total_seconds()
 
-    # get the shots from the job.inputs in case of error return 0   
     try:
         shots = job.inputs["pubs"][0][2]
     except (KeyError, IndexError, TypeError):
         shots = 0
 
-    # prepare job data to be stored in the database
+    try:
+        circuit = job.inputs["pubs"][0][0]
+        num_qubits = circuit.num_qubits
+        circuit_depth = circuit.depth()
+    except (KeyError, IndexError, TypeError, AttributeError):
+        num_qubits = None
+        circuit_depth = None
+
     job_data = {
         "id": job.job_id(),
         "backend": job.backend().name,
@@ -75,6 +89,8 @@ def fetch_job(job_id: str):
         "execution_time": execution_time,
         "shots": shots,
         "created_at": created,
+        "num_qubits": num_qubits,
+        "circuit_depth": circuit_depth,
     }
 
     # create a quantum job object, a quantumjob is an object that represents a quantum job in the database

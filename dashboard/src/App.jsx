@@ -926,6 +926,232 @@ function JobsPage() {
   )
 }
 
+// ── Backends page ─────────────────────────────────────────────────────────────
+function BackendsPage() {
+  const [backends, setBackends] = useState([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    axios.get("http://localhost:8000/backends")
+      .then(r => setBackends(r.data))
+      .catch(console.error)
+      .finally(() => setLoading(false))
+  }, [])
+
+  return (
+    <main style={{ padding: "28px 28px 48px", maxWidth: 1480, margin: "0 auto" }}>
+      <div style={{ marginBottom: 24 }}>
+        <h1 style={{ fontSize: 22, fontWeight: 600, margin: 0, letterSpacing: "-0.01em" }}>
+          Backends
+        </h1>
+        <p style={{ margin: "6px 0 0", color: "var(--fg-2)", fontSize: 13 }}>
+          Aggregated performance metrics per IBM Quantum backend.
+        </p>
+      </div>
+
+      {loading && (
+        <p className="mono" style={{ fontSize: 11, color: "var(--fg-3)" }}>Loading…</p>
+      )}
+
+      {!loading && backends.length === 0 && (
+        <p className="mono" style={{ fontSize: 11, color: "var(--fg-3)" }}>
+          No backend data yet — add jobs to see metrics here.
+        </p>
+      )}
+
+      <div style={{
+        display: "grid",
+        gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))",
+        gap: 14,
+      }}>
+        {backends.map(b => (
+          <div key={b.name} style={{
+            background: "var(--bg-1)",
+            border: "1px solid var(--line-soft)",
+            borderRadius: "var(--radius-lg)",
+            padding: "20px 22px",
+          }}>
+            {/* backend name */}
+            <div style={{ marginBottom: 16 }}>
+              <div style={{
+                fontFamily: "'JetBrains Mono', monospace",
+                fontSize: 15, fontWeight: 600,
+                color: "var(--accent)", letterSpacing: "0.02em",
+              }}>{b.name}</div>
+            </div>
+
+            {/* stats row */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
+              {[
+                { label: "Total Jobs", value: b.total_jobs, unit: "" },
+                { label: "Avg Queue",  value: fmtDuration(b.avg_queue_time),  unit: "" },
+                { label: "Avg Exec",   value: fmtDuration(b.avg_execution_time), unit: "" },
+              ].map(stat => (
+                <div key={stat.label}>
+                  <div style={{
+                    fontFamily: "'JetBrains Mono', monospace",
+                    fontSize: 9, fontWeight: 500,
+                    color: "var(--fg-3)", textTransform: "uppercase",
+                    letterSpacing: "0.1em", marginBottom: 4,
+                  }}>{stat.label}</div>
+                  <div style={{
+                    fontFamily: "'JetBrains Mono', monospace",
+                    fontSize: 20, fontWeight: 600,
+                    color: "var(--fg-0)", letterSpacing: "-0.01em",
+                  }}>{stat.value}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </main>
+  )
+}
+
+// ── Circuits page ─────────────────────────────────────────────────────────────
+function CircuitsPage() {
+  const [circuits, setCircuits] = useState([])
+  const [search, setSearch] = useState("")
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    axios.get("http://localhost:8000/circuits")
+      .then(r => setCircuits(r.data))
+      .catch(console.error)
+      .finally(() => setLoading(false))
+  }, [])
+
+  const filtered = circuits.filter(c =>
+    !search ||
+    c.id.toLowerCase().includes(search.toLowerCase()) ||
+    (c.backend || "").toLowerCase().includes(search.toLowerCase())
+  )
+
+  const headers = ["Job ID", "Backend", "Qubits", "Depth", "Created"]
+
+  return (
+    <main style={{ padding: "28px 28px 48px", maxWidth: 1480, margin: "0 auto" }}>
+      <div style={{ marginBottom: 24 }}>
+        <h1 style={{ fontSize: 22, fontWeight: 600, margin: 0, letterSpacing: "-0.01em" }}>
+          Circuits
+        </h1>
+        <p style={{ margin: "6px 0 0", color: "var(--fg-2)", fontSize: 13 }}>
+          Circuit structure for every collected job — qubit count and depth.
+        </p>
+      </div>
+
+      <div style={{
+        background: "var(--bg-1)",
+        border: "1px solid var(--line-soft)",
+        borderRadius: "var(--radius-lg)",
+        overflow: "hidden",
+      }}>
+        {/* header bar */}
+        <div style={{
+          display: "flex", alignItems: "center",
+          justifyContent: "space-between",
+          padding: "14px 18px",
+          borderBottom: "1px solid var(--line-soft)",
+          gap: 16,
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <div style={{ fontSize: 14, fontWeight: 600 }}>Circuits</div>
+            <div className="mono" style={{ fontSize: 11, color: "var(--fg-3)" }}>
+              {loading ? "…" : `${filtered.length} of ${circuits.length}`}
+            </div>
+          </div>
+          <div style={{
+            display: "flex", alignItems: "center", gap: 6,
+            background: "var(--bg-2)", border: "1px solid var(--line-soft)",
+            borderRadius: "var(--radius)", padding: "5px 10px", width: 220,
+          }}>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none"
+              stroke="var(--fg-3)" strokeWidth="2">
+              <circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3" />
+            </svg>
+            <input
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="search id, backend…"
+              style={{
+                background: "transparent", border: "none", outline: "none",
+                color: "var(--fg-0)", fontFamily: "'JetBrains Mono', monospace",
+                fontSize: 11, width: "100%",
+              }}
+            />
+          </div>
+        </div>
+
+        <div style={{ overflowX: "auto" }}>
+          <table style={{
+            width: "100%", borderCollapse: "collapse",
+            fontFamily: "'JetBrains Mono', monospace", fontSize: 12,
+          }}>
+            <thead>
+              <tr>
+                {headers.map((h, i) => (
+                  <th key={i} style={{
+                    textAlign: i >= 2 && i <= 3 ? "right" : "left",
+                    padding: "10px 16px",
+                    color: "var(--fg-3)", fontWeight: 500, fontSize: 10,
+                    textTransform: "uppercase", letterSpacing: "0.1em",
+                    borderBottom: "1px solid var(--line)",
+                    background: "var(--bg-1)", position: "sticky", top: 0,
+                  }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((c, idx) => (
+                <tr key={c.id}
+                  style={{
+                    borderBottom: "1px solid var(--line-soft)",
+                    background: idx % 2 === 0 ? "transparent"
+                      : "color-mix(in oklch, var(--bg-2) 30%, transparent)",
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.background = "var(--bg-2)"}
+                  onMouseLeave={e => e.currentTarget.style.background = idx % 2 === 0
+                    ? "transparent" : "color-mix(in oklch, var(--bg-2) 30%, transparent)"}
+                >
+                  <td style={cellStyle()}>
+                    <span style={{ color: "var(--accent)", cursor: "default" }} title={c.id}>
+                      {c.id.slice(0, 8)}
+                    </span>
+                  </td>
+                  <td style={cellStyle()}>
+                    <span style={{ color: "var(--fg-1)" }}>{c.backend}</span>
+                  </td>
+                  <td style={cellStyle("right")}>
+                    <span style={{ color: c.num_qubits != null ? "var(--fg-0)" : "var(--fg-3)" }}>
+                      {c.num_qubits ?? "—"}
+                    </span>
+                  </td>
+                  <td style={cellStyle("right")}>
+                    <span style={{ color: c.circuit_depth != null ? "var(--fg-0)" : "var(--fg-3)" }}>
+                      {c.circuit_depth ?? "—"}
+                    </span>
+                  </td>
+                  <td style={cellStyle()}>
+                    <span style={{ color: "var(--fg-2)" }}>{fmtDateTime(c.created_at)}</span>
+                  </td>
+                </tr>
+              ))}
+              {!loading && filtered.length === 0 && (
+                <tr>
+                  <td colSpan={5} style={{ padding: 32, textAlign: "center", color: "var(--fg-3)" }}>
+                    No circuits match.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </main>
+  )
+}
+
 // ── App (router shell) ────────────────────────────────────────────────────────
 function App() {
   return (
@@ -935,8 +1161,8 @@ function App() {
         <Routes>
           <Route path="/"         element={<Overview />} />
           <Route path="/jobs"     element={<JobsPage />} />
-          <Route path="/backends" element={<PlaceholderPage title="Backends" />} />
-          <Route path="/circuits" element={<PlaceholderPage title="Circuits" />} />
+          <Route path="/backends" element={<BackendsPage />} />
+          <Route path="/circuits" element={<CircuitsPage />} />
           <Route path="/logs"     element={<PlaceholderPage title="Logs" />} />
         </Routes>
       </div>

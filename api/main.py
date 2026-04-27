@@ -23,16 +23,32 @@ app.add_middleware(
 # It's the data validation layer
 
 class JobResponse(BaseModel):
-    model_config = {"from_attributes": True} #  allows Pydantic to read data from SQLAlchemy models
+    model_config = {"from_attributes": True}
     id: str
     backend: str
     queue_time: float
     execution_time: float
     shots: int
     created_at: datetime
+    num_qubits: int | None = None
+    circuit_depth: int | None = None
 
 class JobRequest(BaseModel):
     job_id: str
+
+class BackendStats(BaseModel):
+    name: str
+    total_jobs: int
+    avg_queue_time: float
+    avg_execution_time: float
+
+class CircuitResponse(BaseModel):
+    model_config = {"from_attributes": True}
+    id: str
+    backend: str
+    num_qubits: int | None = None
+    circuit_depth: int | None = None
+    created_at: datetime
 
 
 # get all jobs
@@ -64,6 +80,36 @@ def create_job(request: JobRequest):
         raise HTTPException(status_code=404, detail="Job not found")
     session.close()
     return job
+
+# backends: aggregated stats per backend
+@app.get("/backends", response_model=list[BackendStats])
+def get_backends():
+    session = sessionmaker(bind=engine)()
+    jobs = session.query(QuantumJob).all()
+    session.close()
+    agg = defaultdict(lambda: {"total": 0, "queue_sum": 0.0, "exec_sum": 0.0})
+    for job in jobs:
+        b = agg[job.backend]
+        b["total"] += 1
+        b["queue_sum"] += job.queue_time or 0.0
+        b["exec_sum"] += job.execution_time or 0.0
+    return [
+        BackendStats(
+            name=name,
+            total_jobs=d["total"],
+            avg_queue_time=round(d["queue_sum"] / d["total"], 2),
+            avg_execution_time=round(d["exec_sum"] / d["total"], 2),
+        )
+        for name, d in sorted(agg.items(), key=lambda x: -x[1]["total"])
+    ]
+
+# circuits: all jobs with circuit metadata
+@app.get("/circuits", response_model=list[CircuitResponse])
+def get_circuits():
+    session = sessionmaker(bind=engine)()
+    jobs = session.query(QuantumJob).all()
+    session.close()
+    return jobs
 
 # throughput: job counts grouped by hour
 @app.get("/metrics/throughput")

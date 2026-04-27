@@ -83,6 +83,12 @@ At-a-glance view of total jobs collected, average queue time, average execution 
 **Searchable job table.**
 Every collected job is stored permanently and displayed in a sortable, searchable table with backend, queue time, execution time, shot count, and submission timestamp. Queue and execution times are shown in human-readable form (`25s`, `3m 12s`, `1h 4m`). Job IDs are truncated in the table with the full ID visible on hover. Deletions require an inline confirmation step to prevent accidental removal.
 
+**Backend comparison.**
+The Backends page aggregates all stored jobs by device and shows each backend's total job count, average queue time, and average execution time as metric cards — giving a quick cross-device performance overview.
+
+**Circuit tracking.**
+The collector extracts `num_qubits` and `circuit_depth` from every submitted circuit and persists them alongside the job. The Circuits page surfaces this data in a searchable table, making it easy to correlate circuit complexity with queue and execution time.
+
 **REST API.**
 Clean FastAPI endpoints expose your full job history as JSON, so you can query it from notebooks, scripts, or any other tool without touching the dashboard.
 
@@ -136,11 +142,13 @@ collector/run_circuit.py   ──►  collector/job_runner.py
 | Column | Type | Description |
 |---|---|---|
 | `id` | TEXT | IBM Quantum job ID, e.g. `crv6x9zy7k2000089g0g` |
-| `backend` | TEXT | Device name, e.g. `ibm_kyoto` |
+| `backend` | TEXT | Device name, e.g. `ibm_fez` |
 | `queue_time` | REAL | Seconds between submission and execution start |
 | `execution_time` | REAL | Seconds the QPU spent running the circuit |
 | `shots` | INTEGER | Number of measurement shots |
 | `created_at` | DATETIME | Job creation timestamp (UTC) |
+| `num_qubits` | INTEGER | Number of qubits in the submitted circuit (nullable) |
+| `circuit_depth` | INTEGER | Transpiled circuit depth (nullable) |
 
 ---
 
@@ -210,6 +218,10 @@ The dashboard opens at `http://localhost:5173`.
 | `GET` | `/jobs` | Return all collected jobs |
 | `GET` | `/jobs/{job_id}` | Return a single job by IBM job ID |
 | `POST` | `/jobs` | Fetch a job from IBM Quantum and store it |
+| `DELETE` | `/jobs/{job_id}` | Delete a job from the database |
+| `GET` | `/backends` | Return aggregated stats per backend |
+| `GET` | `/circuits` | Return all jobs with circuit metadata |
+| `GET` | `/metrics/throughput` | Return hourly job counts for the throughput chart |
 
 **POST `/jobs` — request body:**
 

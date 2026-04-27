@@ -25,6 +25,9 @@ class QuantumJob(Base):
     shots = Column(Integer)
     #job creation time
     created_at = Column(DateTime)
+    #circuit metadata (nullable — older jobs won't have these)
+    num_qubits = Column(Integer, nullable=True)
+    circuit_depth = Column(Integer, nullable=True)
 
     # initialize database
 
