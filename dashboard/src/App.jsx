@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from "react"
+import { BrowserRouter, Routes, Route, Link, useLocation } from "react-router-dom"
 import axios from "axios"
 import './App.css'
 
@@ -31,6 +32,26 @@ function fmtTime(d) {
 function fmtNum(n, decimals = 1) {
   if (n == null) return "—"
   return Number(n).toFixed(decimals)
+}
+
+function fmtDuration(seconds) {
+  if (seconds == null) return "—"
+  const s = Math.round(seconds)
+  if (s < 60) return `${s}s`
+  const m = Math.floor(s / 60)
+  const rem = s % 60
+  if (m < 60) return rem > 0 ? `${m}m ${rem}s` : `${m}m`
+  const h = Math.floor(m / 60)
+  const remM = m % 60
+  return remM > 0 ? `${h}h ${remM}m` : `${h}h`
+}
+
+function fmtDateTime(str) {
+  if (!str) return "—"
+  return new Date(str).toLocaleString("en-US", {
+    month: "short", day: "numeric", year: "numeric",
+    hour: "numeric", minute: "2-digit", hour12: true,
+  })
 }
 
 function fmtK(n) {
@@ -292,6 +313,66 @@ function ThroughputChart({ data }) {
   )
 }
 
+// ── AddJobForm ────────────────────────────────────────────────────────────────
+function AddJobForm({ value, onChange, onAdd, adding, error }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+      <div style={{
+        display: "flex",
+        background: "var(--bg-2)",
+        border: "1px solid var(--line-soft)",
+        borderRadius: "var(--radius)",
+        overflow: "hidden",
+      }}>
+        <input
+          value={value}
+          onChange={e => onChange(e.target.value)}
+          onKeyDown={e => e.key === "Enter" && onAdd()}
+          placeholder="job id…"
+          disabled={adding}
+          style={{
+            background: "transparent",
+            border: "none",
+            outline: "none",
+            color: "var(--fg-0)",
+            fontFamily: "'JetBrains Mono', monospace",
+            fontSize: 11,
+            padding: "5px 10px",
+            width: 200,
+          }}
+        />
+        <button
+          onClick={onAdd}
+          disabled={adding || !value.trim()}
+          style={{
+            background: adding
+              ? "var(--bg-3)"
+              : "color-mix(in oklch, var(--accent) 12%, transparent)",
+            border: "none",
+            borderLeft: "1px solid var(--line-soft)",
+            color: adding ? "var(--fg-3)" : "var(--accent)",
+            fontFamily: "'JetBrains Mono', monospace",
+            fontSize: 11,
+            fontWeight: 500,
+            padding: "5px 14px",
+            cursor: adding || !value.trim() ? "default" : "pointer",
+            letterSpacing: "0.04em",
+            whiteSpace: "nowrap",
+          }}
+        >{adding ? "Fetching…" : "+ Add"}</button>
+      </div>
+      {error && (
+        <span style={{
+          fontFamily: "'JetBrains Mono', monospace",
+          fontSize: 10,
+          color: "var(--red)",
+          letterSpacing: "0.02em",
+        }}>{error}</span>
+      )}
+    </div>
+  )
+}
+
 // ── FilterTabs ────────────────────────────────────────────────────────────────
 function FilterTabs({ filter, onFilter, counts }) {
   const tabs = [{ id: "all", label: "All" }]
@@ -330,7 +411,9 @@ function FilterTabs({ filter, onFilter, counts }) {
 }
 
 // ── JobsTable ─────────────────────────────────────────────────────────────────
-function JobsTable({ jobs, filter, onFilter, search, onSearch }) {
+function JobsTable({ jobs, filter, onFilter, search, onSearch, addInput, onAddInput, onAdd, adding, addError, onDelete }) {
+  const [confirmId, setConfirmId] = useState(null)
+
   const filtered = jobs.filter(j => {
     if (search && !(
       String(j.id).toLowerCase().includes(search.toLowerCase()) ||
@@ -342,12 +425,13 @@ function JobsTable({ jobs, filter, onFilter, search, onSearch }) {
   const counts = useMemo(() => ({ all: jobs.length }), [jobs])
 
   const headers = [
-    { label: "Job ID", align: "left" },
-    { label: "Backend", align: "left" },
-    { label: "Queue (s)", align: "right" },
-    { label: "Exec (s)", align: "right" },
-    { label: "Shots", align: "right" },
-    { label: "Created", align: "left" },
+    { label: "Job ID",    align: "left"   },
+    { label: "Backend",   align: "left"   },
+    { label: "Queue (s)", align: "right"  },
+    { label: "Exec (s)",  align: "right"  },
+    { label: "Shots",     align: "right"  },
+    { label: "Created",   align: "left"   },
+    { label: "",          align: "center" },
   ]
 
   return (
@@ -371,6 +455,14 @@ function JobsTable({ jobs, filter, onFilter, search, onSearch }) {
           <div className="mono" style={{ fontSize: 11, color: "var(--fg-3)" }}>
             {filtered.length} of {jobs.length}
           </div>
+          <div style={{ width: 1, height: 16, background: "var(--line)" }} />
+          <AddJobForm
+            value={addInput}
+            onChange={onAddInput}
+            onAdd={onAdd}
+            adding={adding}
+            error={addError}
+          />
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -449,20 +541,18 @@ function JobsTable({ jobs, filter, onFilter, search, onSearch }) {
                   : "color-mix(in oklch, var(--bg-2) 30%, transparent)"}
               >
                 <td style={cellStyle()}>
-                  <span style={{ color: "var(--accent)" }}>{j.id}</span>
+                  <span style={{ color: "var(--accent)", cursor: "default" }} title={j.id}>
+                    {j.id.slice(0, 8)}
+                  </span>
                 </td>
                 <td style={cellStyle()}>
                   <span style={{ color: "var(--fg-1)" }}>{j.backend}</span>
                 </td>
                 <td style={cellStyle("right")}>
-                  <span style={{ color: "var(--fg-1)" }}>
-                    {j.queue_time != null ? j.queue_time : "—"}
-                  </span>
+                  <span style={{ color: "var(--fg-1)" }}>{fmtDuration(j.queue_time)}</span>
                 </td>
                 <td style={cellStyle("right")}>
-                  <span style={{ color: "var(--fg-1)" }}>
-                    {j.execution_time != null ? j.execution_time : "—"}
-                  </span>
+                  <span style={{ color: "var(--fg-1)" }}>{fmtDuration(j.execution_time)}</span>
                 </td>
                 <td style={cellStyle("right")}>
                   <span style={{ color: "var(--fg-1)" }}>
@@ -470,11 +560,67 @@ function JobsTable({ jobs, filter, onFilter, search, onSearch }) {
                   </span>
                 </td>
                 <td style={cellStyle()}>
-                  <span style={{ color: "var(--fg-2)" }}>
-                    {j.created_at
-                      ? new Date(j.created_at).toLocaleTimeString()
-                      : "—"}
-                  </span>
+                  <span style={{ color: "var(--fg-2)" }}>{fmtDateTime(j.created_at)}</span>
+                </td>
+                <td style={cellStyle("center")}>
+                  {confirmId === j.id ? (
+                    <div style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                      <button
+                        onClick={() => { onDelete(j.id); setConfirmId(null) }}
+                        title="Confirm delete"
+                        style={{
+                          background: "color-mix(in oklch, var(--red) 14%, transparent)",
+                          border: "1px solid color-mix(in oklch, var(--red) 35%, transparent)",
+                          color: "var(--red)",
+                          fontFamily: "'JetBrains Mono', monospace",
+                          fontSize: 10,
+                          padding: "3px 8px",
+                          borderRadius: 4,
+                          cursor: "pointer",
+                          letterSpacing: "0.04em",
+                        }}
+                      >Delete</button>
+                      <button
+                        onClick={() => setConfirmId(null)}
+                        title="Cancel"
+                        style={{
+                          background: "transparent",
+                          border: "1px solid var(--line-soft)",
+                          color: "var(--fg-3)",
+                          fontFamily: "'JetBrains Mono', monospace",
+                          fontSize: 10,
+                          padding: "3px 8px",
+                          borderRadius: 4,
+                          cursor: "pointer",
+                        }}
+                      >Cancel</button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => setConfirmId(j.id)}
+                      title="Delete job"
+                      style={{
+                        background: "transparent",
+                        border: "none",
+                        color: "var(--fg-3)",
+                        cursor: "pointer",
+                        padding: "2px 6px",
+                        borderRadius: 4,
+                        display: "inline-flex",
+                        alignItems: "center",
+                      }}
+                      onMouseEnter={e => e.currentTarget.style.color = "var(--red)"}
+                      onMouseLeave={e => e.currentTarget.style.color = "var(--fg-3)"}
+                    >
+                      <svg width="13" height="14" viewBox="0 0 13 14" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="1 3.5 12 3.5" />
+                        <path d="M2.5 3.5V12a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V3.5" />
+                        <path d="M4.5 3.5V2a.5.5 0 0 1 .5-.5h3a.5.5 0 0 1 .5.5v1.5" />
+                        <line x1="5" y1="6.5" x2="5" y2="10" />
+                        <line x1="8" y1="6.5" x2="8" y2="10" />
+                      </svg>
+                    </button>
+                  )}
                 </td>
               </tr>
             ))}
@@ -523,7 +669,17 @@ function Logo() {
 }
 
 // ── TopBar ────────────────────────────────────────────────────────────────────
+const NAV_ITEMS = [
+  { label: "Overview", to: "/"         },
+  { label: "Jobs",     to: "/jobs"     },
+  { label: "Backends", to: "/backends" },
+  { label: "Circuits", to: "/circuits" },
+  { label: "Logs",     to: "/logs"     },
+]
+
 function TopBar({ live, onToggleLive, lastSync }) {
+  const location = useLocation()
+
   return (
     <header style={{
       display: "flex",
@@ -542,17 +698,24 @@ function TopBar({ live, onToggleLive, lastSync }) {
         <Logo />
         <div style={{ width: 1, height: 20, background: "var(--line)" }} />
         <nav style={{ display: "flex", gap: 4 }}>
-          {["Overview", "Jobs", "Backends", "Circuits", "Logs"].map((n, i) => (
-            <a key={n} href="#" style={{
-              fontSize: 12,
-              fontWeight: 500,
-              color: i === 0 ? "var(--fg-0)" : "var(--fg-2)",
-              padding: "6px 10px",
-              borderRadius: 4,
-              background: i === 0 ? "var(--bg-2)" : "transparent",
-              textDecoration: "none",
-            }}>{n}</a>
-          ))}
+          {NAV_ITEMS.map(item => {
+            const active = location.pathname === item.to
+            return (
+              <Link
+                key={item.label}
+                to={item.to}
+                style={{
+                  fontSize: 12,
+                  fontWeight: 500,
+                  color: active ? "var(--fg-0)" : "var(--fg-2)",
+                  padding: "6px 10px",
+                  borderRadius: 4,
+                  background: active ? "var(--bg-2)" : "transparent",
+                  textDecoration: "none",
+                }}
+              >{item.label}</Link>
+            )
+          })}
         </nav>
       </div>
 
@@ -594,8 +757,24 @@ function TopBar({ live, onToggleLive, lastSync }) {
   )
 }
 
-// ── App ───────────────────────────────────────────────────────────────────────
-function App() {
+// ── Placeholder page ──────────────────────────────────────────────────────────
+function PlaceholderPage({ title }) {
+  return (
+    <main style={{ padding: "28px 28px 48px", maxWidth: 1480, margin: "0 auto" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
+        <h1 style={{ fontSize: 22, fontWeight: 600, margin: 0, letterSpacing: "-0.01em" }}>
+          {title}
+        </h1>
+      </div>
+      <p className="mono" style={{ color: "var(--fg-3)", fontSize: 12, marginTop: 8 }}>
+        Coming soon.
+      </p>
+    </main>
+  )
+}
+
+// ── Overview (full dashboard) ─────────────────────────────────────────────────
+function Overview() {
   const [jobs, setJobs] = useState([])
 
   useEffect(() => {
@@ -614,6 +793,136 @@ function App() {
   const [throughput] = useState(() => generateThroughput(48))
   const [filter, setFilter] = useState("all")
   const [search, setSearch] = useState("")
+  const [addInput, setAddInput] = useState("")
+  const [adding, setAdding] = useState(false)
+  const [addError, setAddError] = useState(null)
+
+  function addJob() {
+    if (!addInput.trim()) return
+    setAdding(true)
+    setAddError(null)
+    axios.post("http://localhost:8000/jobs", { job_id: addInput.trim() })
+      .then(response => {
+        setJobs(prev => [response.data, ...prev])
+        setAddInput("")
+      })
+      .catch(err => {
+        setAddError(err.response?.data?.detail || "Failed to add job")
+      })
+      .finally(() => setAdding(false))
+  }
+
+  function deleteJob(jobId) {
+    axios.delete(`http://localhost:8000/jobs/${jobId}`)
+      .then(() => setJobs(prev => prev.filter(j => j.id !== jobId)))
+      .catch(err => console.error("Delete failed:", err))
+  }
+
+  const stats = useMemo(() => {
+    if (!jobs.length) return { total: 0, avgQueue: 0, avgExec: 0, totalShots: 0 }
+    const total = jobs.length
+    const avgQueue = jobs.reduce((s, j) => s + (j.queue_time || 0), 0) / total
+    const avgExec  = jobs.reduce((s, j) => s + (j.execution_time || 0), 0) / total
+    const totalShots = jobs.reduce((s, j) => s + (j.shots || 0), 0)
+    return { total, avgQueue, avgExec, totalShots }
+  }, [jobs])
+
+  const sparkSlice = jobs.slice(0, 13)
+
+  return (
+    <main style={{ padding: "28px 28px 48px", maxWidth: 1480, margin: "0 auto" }}>
+
+      {/* page header */}
+      <div style={{ marginBottom: 24 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
+          <h1 style={{ fontSize: 22, fontWeight: 600, margin: 0, letterSpacing: "-0.01em" }}>
+            Quantum Job Observability
+          </h1>
+          <span className="mono" style={{
+            fontSize: 10, color: "var(--accent)",
+            border: "1px solid var(--accent-line)",
+            padding: "2px 6px", borderRadius: 4,
+            textTransform: "uppercase", letterSpacing: "0.1em",
+            background: "var(--accent-dim)",
+          }}>prod</span>
+        </div>
+        <p style={{ margin: 0, color: "var(--fg-2)", fontSize: 13 }}>
+          Real-time monitoring of quantum circuit executions across QPU backends
+          — track queue depth and runtime in one place.
+        </p>
+      </div>
+
+      {/* metrics row */}
+      <div style={{
+        display: "grid",
+        gridTemplateColumns: "repeat(4, 1fr)",
+        gap: 14,
+        marginBottom: 18,
+      }}>
+        <MetricCard
+          label="Total Jobs"
+          value={stats.total}
+          unit="jobs"
+          delta={6.4}
+          sparkline={buildSparkPath(sparkSlice.map((_, i) => i + 1))}
+        />
+        <MetricCard
+          label="Avg Queue"
+          value={fmtNum(stats.avgQueue)}
+          unit="s"
+          delta={-4.2}
+          sparkline={buildSparkPath(sparkSlice.map(j => j.queue_time || 0))}
+        />
+        <MetricCard
+          label="Avg Exec"
+          value={fmtNum(stats.avgExec)}
+          unit="s"
+          delta={1.8}
+          sparkline={buildSparkPath(sparkSlice.map(j => j.execution_time || 0))}
+        />
+        <MetricCard
+          label="Total Shots"
+          value={fmtK(stats.totalShots)}
+          delta={2.1}
+          sparkline={buildSparkPath(sparkSlice.map(j => j.shots || 0))}
+        />
+      </div>
+
+      {/* throughput chart */}
+      <div style={{ marginBottom: 18 }}>
+        <ThroughputChart data={throughput} />
+      </div>
+
+      {/* jobs table */}
+      <JobsTable
+        jobs={jobs}
+        filter={filter}
+        onFilter={setFilter}
+        search={search}
+        onSearch={setSearch}
+        addInput={addInput}
+        onAddInput={setAddInput}
+        onAdd={addJob}
+        adding={adding}
+        addError={addError}
+        onDelete={deleteJob}
+      />
+
+      {/* footer */}
+      <div className="mono" style={{
+        color: "var(--fg-3)", fontSize: 10, marginTop: 24,
+        display: "flex", justifyContent: "space-between", letterSpacing: "0.06em",
+      }}>
+        <span>QOBS · quantum job observability</span>
+        <span>region us-east-1 · cluster qpu-prod-04</span>
+      </div>
+
+    </main>
+  )
+}
+
+// ── App (router shell) ────────────────────────────────────────────────────────
+function App() {
   const [live, setLive] = useState(true)
   const [lastSync, setLastSync] = useState(new Date())
 
@@ -623,103 +932,18 @@ function App() {
     return () => clearInterval(id)
   }, [live])
 
-  const stats = useMemo(() => {
-    if (!jobs.length) return { total: 0, avgQueue: 0, avgExec: 0, totalShots: 0 }
-    const total = jobs.length
-    const avgQueue = jobs.reduce((s, j) => s + (j.queue_time || 0), 0) / total
-    const avgExec = jobs.reduce((s, j) => s + (j.execution_time || 0), 0) / total
-    const totalShots = jobs.reduce((s, j) => s + (j.shots || 0), 0)
-    return { total, avgQueue, avgExec, totalShots }
-  }, [jobs])
-
-  const sparkSlice = jobs.slice(0, 13)
-
   return (
-    <div>
-      <TopBar live={live} onToggleLive={() => setLive(l => !l)} lastSync={lastSync} />
-
-      <main style={{ padding: "28px 28px 48px", maxWidth: 1480, margin: "0 auto" }}>
-
-        {/* page header */}
-        <div style={{ marginBottom: 24 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
-            <h1 style={{ fontSize: 22, fontWeight: 600, margin: 0, letterSpacing: "-0.01em" }}>
-              Quantum Job Observability
-            </h1>
-            <span className="mono" style={{
-              fontSize: 10, color: "var(--accent)",
-              border: "1px solid var(--accent-line)",
-              padding: "2px 6px", borderRadius: 4,
-              textTransform: "uppercase", letterSpacing: "0.1em",
-              background: "var(--accent-dim)",
-            }}>prod</span>
-          </div>
-          <p style={{ margin: 0, color: "var(--fg-2)", fontSize: 13 }}>
-            Real-time monitoring of quantum circuit executions across QPU backends
-            — track queue depth and runtime in one place.
-          </p>
-        </div>
-
-        {/* metrics row */}
-        <div style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(4, 1fr)",
-          gap: 14,
-          marginBottom: 18,
-        }}>
-          <MetricCard
-            label="Total Jobs"
-            value={stats.total}
-            unit="jobs"
-            delta={6.4}
-            sparkline={buildSparkPath(sparkSlice.map((_, i) => i + 1))}
-          />
-          <MetricCard
-            label="Avg Queue"
-            value={fmtNum(stats.avgQueue)}
-            unit="s"
-            delta={-4.2}
-            sparkline={buildSparkPath(sparkSlice.map(j => j.queue_time || 0))}
-          />
-          <MetricCard
-            label="Avg Exec"
-            value={fmtNum(stats.avgExec)}
-            unit="s"
-            delta={1.8}
-            sparkline={buildSparkPath(sparkSlice.map(j => j.execution_time || 0))}
-          />
-          <MetricCard
-            label="Total Shots"
-            value={fmtK(stats.totalShots)}
-            delta={2.1}
-            sparkline={buildSparkPath(sparkSlice.map(j => j.shots || 0))}
-          />
-        </div>
-
-        {/* throughput chart */}
-        <div style={{ marginBottom: 18 }}>
-          <ThroughputChart data={throughput} />
-        </div>
-
-        {/* jobs table */}
-        <JobsTable
-          jobs={jobs}
-          filter={filter}
-          onFilter={setFilter}
-          search={search}
-          onSearch={setSearch}
-        />
-
-        {/* footer */}
-        <div className="mono" style={{
-          color: "var(--fg-3)", fontSize: 10, marginTop: 24,
-          display: "flex", justifyContent: "space-between", letterSpacing: "0.06em",
-        }}>
-          <span>QOBS · quantum job observability</span>
-          <span>region us-east-1 · cluster qpu-prod-04</span>
-        </div>
-
-      </main>
+    <BrowserRouter>
+      <div>
+        <TopBar live={live} onToggleLive={() => setLive(l => !l)} lastSync={lastSync} />
+        <Routes>
+          <Route path="/"         element={<Overview />} />
+          <Route path="/jobs"     element={<PlaceholderPage title="Jobs" />} />
+          <Route path="/backends" element={<PlaceholderPage title="Backends" />} />
+          <Route path="/circuits" element={<PlaceholderPage title="Circuits" />} />
+          <Route path="/logs"     element={<PlaceholderPage title="Logs" />} />
+        </Routes>
+      </div>
 
       <style>{`
         @keyframes pulse {
@@ -732,7 +956,7 @@ function App() {
         ::-webkit-scrollbar-thumb { background: var(--bg-3); border-radius: 4px; }
         ::-webkit-scrollbar-track { background: transparent; }
       `}</style>
-    </div>
+    </BrowserRouter>
   )
 }
 

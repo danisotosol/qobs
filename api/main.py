@@ -63,3 +63,16 @@ def create_job(request: JobRequest):
         raise HTTPException(status_code=404, detail="Job not found")
     session.close()
     return job
+
+# delete a job
+@app.delete("/jobs/{job_id}", response_model=JobResponse)
+def delete_job(job_id: str):
+    session = sessionmaker(bind=engine)()
+    job = session.query(QuantumJob).filter_by(id=job_id).first()
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+    session.delete(job)
+    session.commit()
+    result = JobResponse.model_validate(job)
+    session.close()
+    return result   
