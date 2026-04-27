@@ -5,6 +5,17 @@ from pydantic import BaseModel
 from datetime import datetime
 from fastapi import HTTPException
 from collector.job_runner import fetch_job
+from fastapi.middleware.cors import CORSMiddleware
+
+app = FastAPI()
+
+# allow requests from the frontend
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Pydantic model for response
 # It maps the database table columns to the response
@@ -22,7 +33,6 @@ class JobResponse(BaseModel):
 class JobRequest(BaseModel):
     job_id: str
 
-app = FastAPI()
 
 # get all jobs
 @app.get("/jobs", response_model=list[JobResponse])
