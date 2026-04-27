@@ -87,7 +87,7 @@ Every collected job is stored permanently and displayed in a sortable, searchabl
 The Backends page aggregates all stored jobs by device and shows each backend's total job count, average queue time, and average execution time as metric cards — giving a quick cross-device performance overview.
 
 **Circuit tracking.**
-The collector extracts `num_qubits` and `circuit_depth` from every submitted circuit and persists them alongside the job. The Circuits page surfaces this data in a searchable table, making it easy to correlate circuit complexity with queue and execution time.
+The collector extracts `num_qubits` and `circuit_depth` from every submitted circuit and persists them alongside the job. The Circuits page surfaces this data in a searchable table, making it easy to correlate circuit complexity with queue and execution time. If a job already exists in the database without circuit metadata, re-posting its ID will fetch the circuit data from IBM and update the record without duplicating or overwriting any other fields.
 
 **REST API.**
 Clean FastAPI endpoints expose your full job history as JSON, so you can query it from notebooks, scripts, or any other tool without touching the dashboard.
@@ -270,6 +270,18 @@ requests.post("http://localhost:8000/jobs", json={"job_id": job.job_id()})
 ```
 
 Run this after every experiment session and QOBS builds up a longitudinal record of your backend's behaviour over time.
+
+**Backfilling circuit metadata for existing jobs:**
+
+If you collected jobs before circuit tracking was added, re-post each job ID and the collector will fetch `num_qubits` and `circuit_depth` from IBM and patch the existing record:
+
+```bash
+curl -X POST http://localhost:8000/jobs \
+  -H "Content-Type: application/json" \
+  -d '{"job_id": "your-existing-job-id"}'
+```
+
+No data is lost — only the two circuit columns are updated.
 
 ---
 
