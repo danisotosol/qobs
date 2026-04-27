@@ -1,5 +1,5 @@
 <h1 align="center">
-  <img src="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTIwIiBoZWlnaHQ9IjEyMCIgdmlld0JveD0iMCAwIDEyMCAxMjAiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGNpcmNsZSBjeD0iNjAiIGN5PSI2MCIgcj0iNDUiIHN0cm9rZT0iIzVjYzhkOCIgc3Ryb2tlLXdpZHRoPSI3Ii8+PGVsbGlwc2UgY3g9IjYwIiBjeT0iNjAiIHJ4PSI0NSIgcnk9IjE3LjUiIHN0cm9rZT0iIzVjYzhkOCIgc3Ryb2tlLXdpZHRoPSI1LjUiIG9wYWNpdHk9IjAuNyIvPjxlbGxpcHNlIGN4PSI2MCIgY3k9IjYwIiByeD0iNDUiIHJ5PSIxNy41IiBzdHJva2U9IiNiODcwZDgiIHN0cm9rZS13aWR0aD0iNS41IiBvcGFjaXR5PSIwLjciIHRyYW5zZm9ybT0icm90YXRlKDYwIDYwIDYwKSIvPjxjaXJjbGUgY3g9IjYwIiBjeT0iNjAiIHI9IjEwIiBmaWxsPSIjNWNjOGQ4Ii8+PC9zdmc+" width="80" height="80" alt="QOBS" /><br />
+  <img src="assets/logo.svg" width="80" height="80" alt="QOBS" /><br />
   QOBS
   <br />
   <small>Quantum Job Observability System</small>
@@ -18,26 +18,31 @@
   <a href="https://qiskit.org">
     <img src="https://img.shields.io/badge/Qiskit-IBM%20Quantum-6929C4?style=flat-square&logo=ibm&logoColor=white" alt="Qiskit" />
   </a>
+  <a href="https://www.docker.com/">
+    <img src="https://img.shields.io/badge/Docker-ready-2496ED?style=flat-square&logo=docker&logoColor=white" alt="Docker" />
+  </a>
   <a href="LICENSE">
     <img src="https://img.shields.io/badge/license-MIT-22c55e?style=flat-square" alt="MIT License" />
   </a>
 </p>
 
 <p align="center">
-  <a href="#the-problem"><strong>Problem</strong></a>
+  <a href="#why-qobs"><strong>Why</strong></a>
+  &middot;
+  <a href="#quick-start"><strong>Quick start</strong></a>
   &middot;
   <a href="#features"><strong>Features</strong></a>
   &middot;
   <a href="#architecture"><strong>Architecture</strong></a>
-  &middot;
-  <a href="#installation"><strong>Installation</strong></a>
   &middot;
   <a href="#api-reference"><strong>API</strong></a>
   &middot;
   <a href="#roadmap"><strong>Roadmap</strong></a>
 </p>
 
-Open-source observability tool for quantum researchers that collects IBM Quantum job executions and surfaces the metrics the official dashboard does not show — queue time history, execution time trends, and the data you need to know when to submit.
+<p align="center">
+  Track what IBM Quantum won't — queue times, execution trends, and the submission data to stop guessing and start optimizing.
+</p>
 
 <p align="center">
   <img src="assets/dashboard.png" alt="QOBS Dashboard" width="100%" />
@@ -45,61 +50,63 @@ Open-source observability tool for quantum researchers that collects IBM Quantum
 
 ---
 
-## The problem
+## Why QOBS
 
-IBM Quantum's cloud dashboard tells you whether a job completed. It does not tell you how long your job sat in queue before the device touched it, how execution time has drifted across submissions, or whether Monday at 9 AM is consistently slower than Wednesday at 2 AM. Without that data, every job submission is a guess.
+IBM Quantum's cloud dashboard tells you whether a job completed. It does not tell you:
 
-QOBS solves this by recording every metric your Qiskit runtime returns — queue time, execution time, shot count, backend, and timestamp — and making the full history queryable through a REST API and a live dashboard built for researchers, not cloud product managers.
+- How long your job sat in queue before the device touched it
+- Whether that backend runs faster on Wednesday nights than Monday mornings
+- How execution time drifts as your circuit depth grows
+
+Without that data, every job submission is a guess. QOBS records every metric Qiskit returns and makes the full history searchable — through a local REST API and a live dashboard built for researchers, not cloud product managers.
 
 ```python
-import requests
-from qiskit_ibm_runtime import SamplerV2 as Sampler
-
-sampler = Sampler(backend)
-job = sampler.run([circuit], shots=1024)
-job.wait_for_final_state()
-
+# After any job completes, one line is all it takes:
 requests.post("http://localhost:8000/jobs", json={"job_id": job.job_id()})
 ```
 
-Your queue times, execution times, and submission history are now permanent, searchable, and visible in the dashboard.
+Or click **Sync with IBM** in the dashboard and QOBS pulls your last 100 jobs automatically.
+
+---
+
+## Quick start
+
+### Docker — recommended, zero setup required
+
+```bash
+git clone https://github.com/danisotosol/qobs.git
+cd qobs
+echo "IBM_TOKEN=your_api_token_here" > .env
+docker-compose up --build
+```
+
+| Service | URL |
+|---|---|
+| Dashboard | http://localhost:5173 |
+| API + interactive docs | http://localhost:8000/docs |
+
+The SQLite database persists on the host at `./quantum_jobs.db` — data survives container restarts.
+
+### Manual setup
+
+Prefer running without Docker? See the [full manual installation guide](#manual-installation) below.
 
 ---
 
 ## Features
 
-**Queue time tracking.**
-Records the gap between job submission and device pickup for every run — the metric IBM Quantum does not persist or expose historically. Over time this becomes a dataset that shows you exactly when a backend is under pressure.
-
-**Execution time trends.**
-Tracks how long the QPU actually ran your circuit, separate from queue overhead, so you can distinguish hardware variability from scheduling variability. Critical for benchmarking circuit depth against real device performance.
-
-**Live observability dashboard.**
-React frontend with a live indicator, metric summary cards, a job throughput chart, and a full searchable job history table — all updating in real time from the local API.
-
-**Metric cards with sparklines.**
-At-a-glance view of total jobs collected, average queue time, average execution time, and total shots fired, each with a trend sparkline built from actual job data.
-
-**Searchable job table.**
-Every collected job is stored permanently and displayed in a sortable, searchable table with backend, queue time, execution time, shot count, and submission timestamp. Queue and execution times are shown in human-readable form (`25s`, `3m 12s`, `1h 4m`). Job IDs are truncated in the table with the full ID visible on hover. Deletions require an inline confirmation step to prevent accidental removal.
-
-**Backend comparison.**
-The Backends page aggregates all stored jobs by device and shows each backend's total job count, average queue time, and average execution time as metric cards — giving a quick cross-device performance overview.
-
-**Circuit tracking.**
-The collector extracts `num_qubits` and `circuit_depth` from every submitted circuit and persists them alongside the job. The Circuits page surfaces this data in a searchable table, making it easy to correlate circuit complexity with queue and execution time. If a job already exists in the database without circuit metadata, re-posting its ID will fetch the circuit data from IBM and update the record without duplicating or overwriting any other fields.
-
-**One-click sync.**
-The Overview page has a "Sync with IBM" button that calls `POST /sync`, which pulls the 100 most recent IBM Quantum jobs and stores any that are not yet in the database — no manual job IDs required. The result shows how many jobs were new and how many were already collected.
-
-**REST API.**
-Clean FastAPI endpoints expose your full job history as JSON, so you can query it from notebooks, scripts, or any other tool without touching the dashboard.
-
-**Docker support.**
-A single `docker-compose up` builds and starts both the FastAPI backend and the React frontend. The SQLite database is mounted as a host volume so data persists across container restarts. The IBM Quantum token is read from `.env` at runtime.
-
-**Local-first, zero lock-in.**
-Everything runs on your machine. Data lives in a single SQLite file. No cloud services, no third-party accounts, no telemetry — only the IBM Quantum credentials you already have.
+| Feature | Description |
+|---|---|
+| **Queue time tracking** | Records the gap between job submission and device pickup for every run — the metric IBM Quantum does not persist or expose historically |
+| **Execution time trends** | Tracks QPU runtime separately from queue overhead, so you can distinguish hardware variability from scheduling variability |
+| **One-click sync** | "Sync with IBM" on the Overview page pulls your 100 most recent jobs and stores any that are new — no manual job IDs required |
+| **Live dashboard** | Metric summary cards with sparklines, an hourly job throughput chart, and a searchable job history table |
+| **Backend comparison** | The Backends page aggregates all stored jobs by device and shows total jobs, average queue time, and average execution time per backend |
+| **Circuit tracking** | `num_qubits` and `circuit_depth` are captured for every job. Re-posting an existing job ID backfills circuit data without touching other fields |
+| **Searchable job table** | Full job history in a sortable table — queue and execution times in human-readable form (`25s`, `3m 12s`, `1h 4m`), job IDs truncated with full ID on hover, inline delete confirmation |
+| **REST API** | All job history exposed as JSON — queryable from notebooks, scripts, or CI pipelines without touching the dashboard |
+| **Docker support** | `docker-compose up --build` starts the full stack in one command |
+| **Local-first** | Everything runs on your machine. One SQLite file. No telemetry, no third-party accounts beyond the IBM credentials you already have |
 
 ---
 
@@ -108,57 +115,52 @@ Everything runs on your machine. Data lives in a single SQLite file. No cloud se
 ```
 qobs/
 ├── api/
-│   └── main.py          # FastAPI app — endpoints, CORS, Pydantic response models
+│   └── main.py            # FastAPI — endpoints, CORS, Pydantic response models
 ├── collector/
-│   ├── job_runner.py    # Fetches completed job metrics from IBM Quantum via Qiskit
-│   └── run_circuit.py   # Submits circuits to IBM backends and records job IDs
+│   └── job_runner.py      # Fetches job metrics from IBM Quantum via Qiskit
 ├── storage/
-│   ├── database.py      # SQLAlchemy ORM model (QuantumJob) and SQLite engine
-│   └── query.py         # Query helpers
-├── dashboard/           # React + Vite frontend
-│   └── src/
-│       └── App.jsx      # Metric cards, throughput chart, jobs table
-└── quantum_jobs.db      # SQLite database — created automatically on first run
+│   └── database.py        # SQLAlchemy ORM (QuantumJob) + SQLite engine
+├── dashboard/             # React 19 + Vite frontend
+│   └── src/App.jsx
+├── Dockerfile             # Backend container
+├── docker-compose.yml     # Full-stack orchestration
+└── quantum_jobs.db        # SQLite — created automatically on first run
 ```
 
 **Data flow:**
 
 ```
-IBM Quantum backend
-       │
-       │  Qiskit IBM Runtime
-       ▼
-collector/run_circuit.py   ──►  collector/job_runner.py
-                                        │
-                                        │  SQLAlchemy
-                                        ▼
-                                  quantum_jobs.db (SQLite)
-                                        │
-                                        │  FastAPI
-                                        ▼
-                                  api/main.py  :8000
-                                        │
-                                        │  axios / HTTP
-                                        ▼
-                              dashboard (React)  :5173
+IBM Quantum
+    │  Qiskit IBM Runtime
+    ▼
+collector/job_runner.py
+    │  SQLAlchemy
+    ▼
+quantum_jobs.db (SQLite)
+    │  FastAPI
+    ▼
+api/main.py  :8000
+    │  axios / HTTP
+    ▼
+dashboard (React)  :5173
 ```
 
 **Data model — `quantum_jobs` table:**
 
 | Column | Type | Description |
 |---|---|---|
-| `id` | TEXT | IBM Quantum job ID, e.g. `crv6x9zy7k2000089g0g` |
+| `id` | TEXT | IBM Quantum job ID — primary key |
 | `backend` | TEXT | Device name, e.g. `ibm_fez` |
 | `queue_time` | REAL | Seconds between submission and execution start |
 | `execution_time` | REAL | Seconds the QPU spent running the circuit |
 | `shots` | INTEGER | Number of measurement shots |
 | `created_at` | DATETIME | Job creation timestamp (UTC) |
-| `num_qubits` | INTEGER | Number of qubits in the submitted circuit (nullable) |
+| `num_qubits` | INTEGER | Qubits in the submitted circuit (nullable) |
 | `circuit_depth` | INTEGER | Transpiled circuit depth (nullable) |
 
 ---
 
-## Installation
+## Manual installation
 
 ### Requirements
 
@@ -166,69 +168,41 @@ collector/run_circuit.py   ──►  collector/job_runner.py
 - Node.js 18 or later
 - An [IBM Quantum](https://quantum.ibm.com) account with an API token
 
----
-
-### Docker (recommended)
-
-The fastest way to run QOBS. Requires [Docker](https://docs.docker.com/get-docker/) with Compose.
-
-```bash
-git clone https://github.com/danisotosol/qobs.git
-cd qobs
-
-# Create your .env with your IBM Quantum token
-echo "IBM_TOKEN=your_api_token_here" > .env
-
-docker-compose up --build
-```
-
-- API → `http://localhost:8000`
-- Dashboard → `http://localhost:5173`
-
-The SQLite database is mounted from the host at `./quantum_jobs.db`, so data persists across restarts.
-
----
-
-### Manual setup
-
-### 1. Clone the repository
+### 1. Clone
 
 ```bash
 git clone https://github.com/danisotosol/qobs.git
 cd qobs
 ```
 
-### 2. Set up the Python environment
+### 2. Python environment
 
 ```bash
 python -m venv venv
 source venv/bin/activate        # Windows: venv\Scripts\activate
-
 pip install fastapi uvicorn sqlalchemy qiskit qiskit-ibm-runtime python-dotenv
 ```
 
-### 3. Configure your IBM Quantum credentials
+### 3. IBM Quantum credentials
 
-Create a `.env` file in the project root with your IBM Quantum API token:
+Create a `.env` file in the project root:
 
 ```
 IBM_TOKEN=your_api_token_here
 ```
 
-The project uses `python-dotenv` to load this automatically. Never commit `.env` to version control — it is already listed in `.gitignore`.
+This file is already listed in `.gitignore` — never commit it.
 
-### 4. Initialize the database and start the API
+### 4. Start the API
 
 ```bash
 python -c "from storage.database import init_db; init_db()"
 uvicorn api.main:app --reload
 ```
 
-The API starts at `http://localhost:8000`. Interactive docs at `http://localhost:8000/docs`.
+API → `http://localhost:8000` · Interactive docs → `http://localhost:8000/docs`
 
 ### 5. Start the dashboard
-
-Open a second terminal:
 
 ```bash
 cd dashboard
@@ -236,7 +210,7 @@ npm install
 npm run dev
 ```
 
-The dashboard opens at `http://localhost:5173`.
+Dashboard → `http://localhost:5173`
 
 ---
 
@@ -248,7 +222,7 @@ The dashboard opens at `http://localhost:5173`.
 | `GET` | `/jobs/{job_id}` | Return a single job by IBM job ID |
 | `POST` | `/jobs` | Fetch a job from IBM Quantum and store it |
 | `DELETE` | `/jobs/{job_id}` | Delete a job from the database |
-| `POST` | `/sync` | Pull the 100 most recent IBM jobs and store new ones |
+| `POST` | `/sync` | Pull the 100 most recent IBM jobs and store any that are new |
 | `GET` | `/backends` | Return aggregated stats per backend |
 | `GET` | `/circuits` | Return all jobs with circuit metadata |
 | `GET` | `/metrics/throughput` | Return hourly job counts for the throughput chart |
@@ -265,7 +239,7 @@ The dashboard opens at `http://localhost:5173`.
 { "new": 12, "existing": 88 }
 ```
 
-**Example response:**
+**GET `/jobs` — example job object:**
 
 ```json
 {
@@ -274,7 +248,9 @@ The dashboard opens at `http://localhost:5173`.
   "queue_time": 47.3,
   "execution_time": 2.8,
   "shots": 4096,
-  "created_at": "2025-04-26T14:22:01"
+  "created_at": "2025-04-26T14:22:01",
+  "num_qubits": 127,
+  "circuit_depth": 312
 }
 ```
 
@@ -282,15 +258,11 @@ The dashboard opens at `http://localhost:5173`.
 
 ## Collecting jobs
 
-**From the command line:**
+### Sync button (recommended)
 
-```bash
-curl -X POST http://localhost:8000/jobs \
-  -H "Content-Type: application/json" \
-  -d '{"job_id": "your-ibm-job-id"}'
-```
+Open the dashboard Overview page and click **↻ Sync with IBM**. QOBS pulls your 100 most recent IBM Quantum jobs and stores any it hasn't seen before — no job IDs needed.
 
-**From a Python script after running a circuit:**
+### After running a circuit
 
 ```python
 import requests
@@ -305,11 +277,19 @@ job.wait_for_final_state()
 requests.post("http://localhost:8000/jobs", json={"job_id": job.job_id()})
 ```
 
-Run this after every experiment session and QOBS builds up a longitudinal record of your backend's behaviour over time.
+Add this at the end of every experiment session and QOBS builds a longitudinal record of your backend's behaviour over time.
 
-**Backfilling circuit metadata for existing jobs:**
+### From the command line
 
-If you collected jobs before circuit tracking was added, re-post each job ID and the collector will fetch `num_qubits` and `circuit_depth` from IBM and patch the existing record:
+```bash
+curl -X POST http://localhost:8000/jobs \
+  -H "Content-Type: application/json" \
+  -d '{"job_id": "your-ibm-job-id"}'
+```
+
+### Backfilling circuit metadata
+
+If you collected jobs before circuit tracking was added, re-post any job ID and QOBS will fetch `num_qubits` and `circuit_depth` from IBM and patch the existing record — no other data is changed.
 
 ```bash
 curl -X POST http://localhost:8000/jobs \
@@ -317,38 +297,29 @@ curl -X POST http://localhost:8000/jobs \
   -d '{"job_id": "your-existing-job-id"}'
 ```
 
-No data is lost — only the two circuit columns are updated.
-
 ---
 
 ## Roadmap
 
-**Real throughput chart.**
-The dashboard currently shows a simulated throughput curve. The immediate next step is a `/metrics/throughput` endpoint that buckets actual stored job counts into five-minute windows, giving the chart real data and making backend congestion visible over a rolling four-hour window.
-
-**Job status tracking.**
-Extend the data model to record job status (`queued`, `running`, `completed`, `failed`) at collection time, and add status-based filter tabs to the dashboard table.
-
-**Best time to submit.**
-Aggregate queue time by hour-of-day and day-of-week across all stored jobs to surface submission windows where a given backend is consistently fastest. This is the core research insight QOBS is built toward — turning anecdotal experience into a data-driven submission strategy.
-
-**Backend comparison view.**
-Side-by-side queue time and execution time distributions across IBM backends, so researchers can make evidence-based decisions about which device to target for a given circuit depth.
-
-**Fidelity tracking.**
-Pull measurement fidelity from completed job results and add a per-job fidelity bar and aggregate fidelity trend card to the dashboard.
-
-**Automated collection.**
-A background scheduler that polls IBM Quantum at a configurable interval for newly completed jobs, removing the need to POST job IDs manually after every session.
-
-**Multi-provider support.**
-Extend the collector beyond IBM Quantum to support IonQ and Quantinuum backends via their respective Qiskit-compatible SDKs, using the same shared job schema and dashboard.
+- [x] Queue time and execution time collection
+- [x] Live dashboard with metric cards and sparklines
+- [x] Hourly job throughput chart (real data, not simulated)
+- [x] Searchable and deletable job history table
+- [x] Backend comparison page
+- [x] Circuit metadata tracking (`num_qubits`, `circuit_depth`)
+- [x] One-click IBM sync (`POST /sync`)
+- [x] Docker support
+- [ ] **Job status tracking** — record `queued`, `running`, `completed`, `failed` at collection time; add status filter tabs to the job table
+- [ ] **Best time to submit** — aggregate queue time by hour-of-day and day-of-week to surface the consistently fastest submission windows per backend
+- [ ] **Fidelity tracking** — pull measurement fidelity from job results and add per-job fidelity bars and a trend card to the dashboard
+- [ ] **Scheduled auto-sync** — background scheduler that polls IBM Quantum at a configurable interval, removing the need to trigger sync manually
+- [ ] **Multi-provider support** — extend the collector to IonQ and Quantinuum backends using Qiskit-compatible SDKs with the same shared schema and dashboard
 
 ---
 
 ## Contributing
 
-Bug reports, feature requests, and pull requests are welcome. Please open an issue before starting significant work so the approach can be discussed first.
+Bug reports, feature requests, and pull requests are welcome. Open an issue before starting significant work so the approach can be discussed first.
 
 ---
 
