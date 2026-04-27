@@ -81,7 +81,7 @@ React frontend with a sticky live/paused toggle, metric summary cards, a job thr
 At-a-glance view of total jobs collected, average queue time, average execution time, and total shots fired, each with a trend sparkline built from actual job data.
 
 **Searchable job table.**
-Every collected job is stored permanently and displayed in a sortable, searchable table with backend, queue time, execution time, shot count, and submission timestamp.
+Every collected job is stored permanently and displayed in a sortable, searchable table with backend, queue time, execution time, shot count, and submission timestamp. Queue and execution times are shown in human-readable form (`25s`, `3m 12s`, `1h 4m`). Job IDs are truncated in the table with the full ID visible on hover. Deletions require an inline confirmation step to prevent accidental removal.
 
 **REST API.**
 Clean FastAPI endpoints expose your full job history as JSON, so you can query it from notebooks, scripts, or any other tool without touching the dashboard.

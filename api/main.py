@@ -6,6 +6,7 @@ from datetime import datetime
 from fastapi import HTTPException
 from collector.job_runner import fetch_job
 from fastapi.middleware.cors import CORSMiddleware
+from collections import defaultdict
 
 app = FastAPI()
 
@@ -63,6 +64,19 @@ def create_job(request: JobRequest):
         raise HTTPException(status_code=404, detail="Job not found")
     session.close()
     return job
+
+# throughput: job counts grouped by hour
+@app.get("/metrics/throughput")
+def get_throughput():
+    session = sessionmaker(bind=engine)()
+    jobs = session.query(QuantumJob).all()
+    session.close()
+    buckets = defaultdict(int)
+    for job in jobs:
+        if job.created_at:
+            hour = job.created_at.replace(minute=0, second=0, microsecond=0)
+            buckets[hour] += 1
+    return [{"hour": k.isoformat(), "count": v} for k, v in sorted(buckets.items())]
 
 # delete a job
 @app.delete("/jobs/{job_id}", response_model=JobResponse)

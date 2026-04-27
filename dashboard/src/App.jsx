@@ -3,32 +3,7 @@ import { BrowserRouter, Routes, Route, Link, useLocation } from "react-router-do
 import axios from "axios"
 import './App.css'
 
-// ── Throughput mock (API has no time-series endpoint) ─────────────────────────
-function rand(seed) {
-  const x = Math.sin(seed) * 10000
-  return x - Math.floor(x)
-}
-
-function generateThroughput(points = 48) {
-  const out = []
-  for (let i = 0; i < points; i++) {
-    const t = i / (points - 1)
-    const base = 22 + Math.sin(t * Math.PI * 2.2) * 8 + Math.sin(t * Math.PI * 7) * 3
-    const success = Math.max(0, Math.round(base + rand(i + 100) * 6))
-    const failed = Math.max(0, Math.round(rand(i + 200) * 4 + (Math.sin(t * Math.PI * 3) > 0.6 ? 5 : 0)))
-    out.push({ t: i, success, failed })
-  }
-  return out
-}
-
 // ── Formatters ────────────────────────────────────────────────────────────────
-function fmtTime(d) {
-  const hh = String(d.getHours()).padStart(2, "0")
-  const mm = String(d.getMinutes()).padStart(2, "0")
-  const ss = String(d.getSeconds()).padStart(2, "0")
-  return `${hh}:${mm}:${ss}`
-}
-
 function fmtNum(n, decimals = 1) {
   if (n == null) return "—"
   return Number(n).toFixed(decimals)
@@ -51,6 +26,13 @@ function fmtDateTime(str) {
   return new Date(str).toLocaleString("en-US", {
     month: "short", day: "numeric", year: "numeric",
     hour: "numeric", minute: "2-digit", hour12: true,
+  })
+}
+
+function fmtHour(isoStr) {
+  if (!isoStr) return ""
+  return new Date(isoStr).toLocaleString("en-US", {
+    month: "short", day: "numeric", hour: "numeric", hour12: true,
   })
 }
 
@@ -158,9 +140,22 @@ function ThroughputChart({ data }) {
   const innerW = W - pad.left - pad.right
   const innerH = H - pad.top - pad.bottom
 
+  if (!data.length) return (
+    <div style={{
+      background: "var(--bg-1)", border: "1px solid var(--line-soft)",
+      borderRadius: "var(--radius-lg)", padding: 20,
+      display: "flex", alignItems: "center", justifyContent: "center",
+      height: 120,
+    }}>
+      <span className="mono" style={{ fontSize: 11, color: "var(--fg-3)" }}>
+        No throughput data yet — add jobs to see the chart.
+      </span>
+    </div>
+  )
+
   const maxY = useMemo(() => {
-    const m = Math.max(...data.map(d => d.success + d.failed))
-    return Math.ceil(m / 10) * 10
+    const m = Math.max(...data.map(d => d.success))
+    return Math.max(1, Math.ceil(m / 5) * 5)
   }, [data])
 
   const xFor = (i) => pad.left + (i / (data.length - 1)) * innerW
@@ -173,9 +168,6 @@ function ThroughputChart({ data }) {
     successPath +
     ` L ${xFor(data.length - 1).toFixed(1)} ${(pad.top + innerH).toFixed(1)}` +
     ` L ${pad.left} ${(pad.top + innerH).toFixed(1)} Z`
-  const failedPath = data.map((d, i) =>
-    (i === 0 ? "M" : "L") + xFor(i).toFixed(1) + " " + yFor(d.failed).toFixed(1)
-  ).join(" ")
 
   const [hover, setHover] = useState(null)
   const ref = useRef(null)
@@ -209,15 +201,14 @@ function ThroughputChart({ data }) {
             <div className="mono" style={{
               fontSize: 11, color: "var(--fg-3)",
               textTransform: "uppercase", letterSpacing: "0.08em",
-            }}>· last 4h · 5min buckets</div>
+            }}>· hourly buckets</div>
           </div>
           <div className="mono" style={{ fontSize: 11, color: "var(--fg-3)", marginTop: 4 }}>
-            jobs completed per interval, across all backends
+            jobs collected per hour, across all backends
           </div>
         </div>
         <div style={{ display: "flex", gap: 16 }}>
-          <LegendDot color="var(--accent)" label="Succeeded" />
-          <LegendDot color="var(--red)" label="Failed" dashed />
+          <LegendDot color="var(--accent)" label="Jobs" />
         </div>
       </div>
 
@@ -256,25 +247,24 @@ function ThroughputChart({ data }) {
           </g>
         ))}
 
-        {/* x tick labels every 8 buckets */}
-        {data.map((d, i) => i % 8 === 0 && (
-          <text key={i}
-            x={xFor(i)} y={H - pad.bottom + 18}
-            textAnchor="middle"
-            fontFamily="'JetBrains Mono', monospace"
-            fontSize="10"
-            fill="var(--fg-3)"
-          >{`-${Math.round((data.length - 1 - i) * 5)}m`}</text>
-        ))}
+        {/* x tick labels — one every ~6 visible ticks */}
+        {data.map((d, i) => {
+          const step = Math.max(1, Math.ceil(data.length / 6))
+          return i % step === 0 && (
+            <text key={i}
+              x={xFor(i)} y={H - pad.bottom + 18}
+              textAnchor="middle"
+              fontFamily="'JetBrains Mono', monospace"
+              fontSize="10"
+              fill="var(--fg-3)"
+            >{fmtHour(d.hour)}</text>
+          )
+        })}
 
         {/* success area fill + line */}
         <path d={successArea} fill="url(#successGrad)" />
         <path d={successPath} stroke="var(--accent)" strokeWidth="1.75"
           fill="none" vectorEffect="non-scaling-stroke" />
-
-        {/* failed dashed line */}
-        <path d={failedPath} stroke="var(--red)" strokeWidth="1.5"
-          fill="none" strokeDasharray="3 3" vectorEffect="non-scaling-stroke" />
 
         {/* hover crosshair + tooltip */}
         {hover != null && (
@@ -286,24 +276,17 @@ function ThroughputChart({ data }) {
             />
             <circle cx={xFor(hover)} cy={yFor(data[hover].success)}
               r="4" fill="var(--bg-0)" stroke="var(--accent)" strokeWidth="2" />
-            <circle cx={xFor(hover)} cy={yFor(data[hover].failed)}
-              r="3" fill="var(--bg-0)" stroke="var(--red)" strokeWidth="1.5" />
 
             <g transform={`translate(${Math.min(xFor(hover) + 12, W - pad.right - 160)}, ${pad.top + 8})`}>
-              <rect width="160" height="62" rx="6" fill="var(--bg-2)" stroke="var(--line)" />
+              <rect width="160" height="48" rx="6" fill="var(--bg-2)" stroke="var(--line)" />
               <text x="12" y="20" fontFamily="'JetBrains Mono', monospace"
                 fontSize="10" fill="var(--fg-3)" letterSpacing="0.06em">
-                {`T-${Math.round((data.length - 1 - hover) * 5)}m`}
+                {data[hover].hour ? fmtHour(data[hover].hour) : ""}
               </text>
               <circle cx="14" cy="36" r="3" fill="var(--accent)" />
               <text x="24" y="40" fontFamily="'JetBrains Mono', monospace"
                 fontSize="11" fill="var(--fg-0)">
-                succ <tspan fontWeight="600">{data[hover].success}</tspan>
-              </text>
-              <circle cx="14" cy="52" r="3" fill="var(--red)" />
-              <text x="24" y="56" fontFamily="'JetBrains Mono', monospace"
-                fontSize="11" fill="var(--fg-0)">
-                fail <tspan fontWeight="600">{data[hover].failed}</tspan>
+                jobs <tspan fontWeight="600">{data[hover].success}</tspan>
               </text>
             </g>
           </g>
@@ -411,7 +394,7 @@ function FilterTabs({ filter, onFilter, counts }) {
 }
 
 // ── JobsTable ─────────────────────────────────────────────────────────────────
-function JobsTable({ jobs, filter, onFilter, search, onSearch, addInput, onAddInput, onAdd, adding, addError, onDelete }) {
+function JobsTable({ jobs, filter, onFilter, search, onSearch, onDelete, addInput, onAddInput, onAdd, adding, addError }) {
   const [confirmId, setConfirmId] = useState(null)
 
   const filtered = jobs.filter(j => {
@@ -427,11 +410,11 @@ function JobsTable({ jobs, filter, onFilter, search, onSearch, addInput, onAddIn
   const headers = [
     { label: "Job ID",    align: "left"   },
     { label: "Backend",   align: "left"   },
-    { label: "Queue (s)", align: "right"  },
-    { label: "Exec (s)",  align: "right"  },
+    { label: "Queue",     align: "right"  },
+    { label: "Exec",      align: "right"  },
     { label: "Shots",     align: "right"  },
     { label: "Created",   align: "left"   },
-    { label: "",          align: "center" },
+    ...(onDelete ? [{ label: "", align: "center" }] : []),
   ]
 
   return (
@@ -455,14 +438,18 @@ function JobsTable({ jobs, filter, onFilter, search, onSearch, addInput, onAddIn
           <div className="mono" style={{ fontSize: 11, color: "var(--fg-3)" }}>
             {filtered.length} of {jobs.length}
           </div>
-          <div style={{ width: 1, height: 16, background: "var(--line)" }} />
-          <AddJobForm
-            value={addInput}
-            onChange={onAddInput}
-            onAdd={onAdd}
-            adding={adding}
-            error={addError}
-          />
+          {onAdd && (
+            <>
+              <div style={{ width: 1, height: 16, background: "var(--line)" }} />
+              <AddJobForm
+                value={addInput}
+                onChange={onAddInput}
+                onAdd={onAdd}
+                adding={adding}
+                error={addError}
+              />
+            </>
+          )}
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -562,7 +549,7 @@ function JobsTable({ jobs, filter, onFilter, search, onSearch, addInput, onAddIn
                 <td style={cellStyle()}>
                   <span style={{ color: "var(--fg-2)" }}>{fmtDateTime(j.created_at)}</span>
                 </td>
-                <td style={cellStyle("center")}>
+                {onDelete && <td style={cellStyle("center")}>
                   {confirmId === j.id ? (
                     <div style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
                       <button
@@ -621,7 +608,7 @@ function JobsTable({ jobs, filter, onFilter, search, onSearch, addInput, onAddIn
                       </svg>
                     </button>
                   )}
-                </td>
+                </td>}
               </tr>
             ))}
             {filtered.length === 0 && (
@@ -677,7 +664,7 @@ const NAV_ITEMS = [
   { label: "Logs",     to: "/logs"     },
 ]
 
-function TopBar({ live, onToggleLive, lastSync }) {
+function TopBar() {
   const location = useLocation()
 
   return (
@@ -720,29 +707,16 @@ function TopBar({ live, onToggleLive, lastSync }) {
       </div>
 
       <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-        <button onClick={onToggleLive} style={{
-          display: "inline-flex",
-          alignItems: "center",
-          gap: 8,
-          background: live ? "var(--accent-dim)" : "var(--bg-2)",
-          border: "1px solid " + (live ? "var(--accent-line)" : "var(--line-soft)"),
-          color: live ? "var(--accent)" : "var(--fg-1)",
-          fontFamily: "'JetBrains Mono', monospace",
-          fontSize: 11,
-          padding: "5px 12px",
-          borderRadius: "var(--radius)",
-          cursor: "pointer",
-          letterSpacing: "0.04em",
+        <div className="mono" style={{
+          display: "inline-flex", alignItems: "center", gap: 6,
+          fontSize: 11, color: "var(--accent)",
         }}>
           <span style={{
             width: 6, height: 6, borderRadius: 999,
-            background: live ? "var(--accent)" : "var(--fg-3)",
-            animation: live ? "pulse 1.6s ease-out infinite" : "none",
+            background: "var(--accent)",
+            animation: "pulse 1.6s ease-out infinite",
           }} />
-          {live ? "LIVE" : "PAUSED"}
-        </button>
-        <div className="mono" style={{ fontSize: 11, color: "var(--fg-3)" }}>
-          synced {fmtTime(lastSync)}
+          LIVE
         </div>
         <div style={{
           width: 28, height: 28,
@@ -773,50 +747,21 @@ function PlaceholderPage({ title }) {
   )
 }
 
-// ── Overview (full dashboard) ─────────────────────────────────────────────────
+// ── Overview (read-only dashboard, latest 10 jobs) ────────────────────────────
 function Overview() {
   const [jobs, setJobs] = useState([])
+  const [throughput, setThroughput] = useState([])
+  const [filter, setFilter] = useState("all")
+  const [search, setSearch] = useState("")
 
   useEffect(() => {
     axios.get("http://localhost:8000/jobs")
-      .then(response => {
-        setJobs(response.data)
-      })
-      .catch(error => {
-        console.error(error)
-      })
-
-    console.log(jobs)
-
+      .then(r => setJobs(r.data))
+      .catch(console.error)
+    axios.get("http://localhost:8000/metrics/throughput")
+      .then(r => setThroughput(r.data.map((d, i) => ({ t: i, hour: d.hour, success: d.count }))))
+      .catch(console.error)
   }, [])
-
-  const [throughput] = useState(() => generateThroughput(48))
-  const [filter, setFilter] = useState("all")
-  const [search, setSearch] = useState("")
-  const [addInput, setAddInput] = useState("")
-  const [adding, setAdding] = useState(false)
-  const [addError, setAddError] = useState(null)
-
-  function addJob() {
-    if (!addInput.trim()) return
-    setAdding(true)
-    setAddError(null)
-    axios.post("http://localhost:8000/jobs", { job_id: addInput.trim() })
-      .then(response => {
-        setJobs(prev => [response.data, ...prev])
-        setAddInput("")
-      })
-      .catch(err => {
-        setAddError(err.response?.data?.detail || "Failed to add job")
-      })
-      .finally(() => setAdding(false))
-  }
-
-  function deleteJob(jobId) {
-    axios.delete(`http://localhost:8000/jobs/${jobId}`)
-      .then(() => setJobs(prev => prev.filter(j => j.id !== jobId)))
-      .catch(err => console.error("Delete failed:", err))
-  }
 
   const stats = useMemo(() => {
     if (!jobs.length) return { total: 0, avgQueue: 0, avgExec: 0, totalShots: 0 }
@@ -893,20 +838,27 @@ function Overview() {
         <ThroughputChart data={throughput} />
       </div>
 
-      {/* jobs table */}
+      {/* jobs preview — latest 10, read-only */}
       <JobsTable
-        jobs={jobs}
+        jobs={jobs.slice(0, 10)}
         filter={filter}
         onFilter={setFilter}
         search={search}
         onSearch={setSearch}
-        addInput={addInput}
-        onAddInput={setAddInput}
-        onAdd={addJob}
-        adding={adding}
-        addError={addError}
-        onDelete={deleteJob}
       />
+
+      {/* view-all link */}
+      <div style={{ marginTop: 12, display: "flex", justifyContent: "flex-end" }}>
+        <Link to="/jobs" style={{
+          fontFamily: "'JetBrains Mono', monospace",
+          fontSize: 11,
+          color: "var(--accent)",
+          textDecoration: "none",
+          letterSpacing: "0.04em",
+        }}>
+          View all jobs →
+        </Link>
+      </div>
 
       {/* footer */}
       <div className="mono" style={{
@@ -921,24 +873,68 @@ function Overview() {
   )
 }
 
-// ── App (router shell) ────────────────────────────────────────────────────────
-function App() {
-  const [live, setLive] = useState(true)
-  const [lastSync, setLastSync] = useState(new Date())
+// ── Jobs page (full CRUD) ─────────────────────────────────────────────────────
+function JobsPage() {
+  const [jobs, setJobs] = useState([])
+  const [filter, setFilter] = useState("all")
+  const [search, setSearch] = useState("")
+  const [addInput, setAddInput] = useState("")
+  const [adding, setAdding] = useState(false)
+  const [addError, setAddError] = useState(null)
 
   useEffect(() => {
-    if (!live) return
-    const id = setInterval(() => setLastSync(new Date()), 4000)
-    return () => clearInterval(id)
-  }, [live])
+    axios.get("http://localhost:8000/jobs")
+      .then(r => setJobs(r.data))
+      .catch(console.error)
+  }, [])
 
+  function addJob() {
+    if (!addInput.trim()) return
+    setAdding(true)
+    setAddError(null)
+    axios.post("http://localhost:8000/jobs", { job_id: addInput.trim() })
+      .then(r => { setJobs(prev => [r.data, ...prev]); setAddInput("") })
+      .catch(err => setAddError(err.response?.data?.detail || "Failed to add job"))
+      .finally(() => setAdding(false))
+  }
+
+  function deleteJob(jobId) {
+    axios.delete(`http://localhost:8000/jobs/${jobId}`)
+      .then(() => setJobs(prev => prev.filter(j => j.id !== jobId)))
+      .catch(err => console.error("Delete failed:", err))
+  }
+
+  return (
+    <main style={{ padding: "28px 28px 48px", maxWidth: 1480, margin: "0 auto" }}>
+      <div style={{ marginBottom: 24 }}>
+        <h1 style={{ fontSize: 22, fontWeight: 600, margin: 0, letterSpacing: "-0.01em" }}>
+          Jobs
+        </h1>
+        <p style={{ margin: "6px 0 0", color: "var(--fg-2)", fontSize: 13 }}>
+          Full job history — add, search, and delete entries.
+        </p>
+      </div>
+      <JobsTable
+        jobs={jobs}
+        filter={filter} onFilter={setFilter}
+        search={search} onSearch={setSearch}
+        addInput={addInput} onAddInput={setAddInput}
+        onAdd={addJob} adding={adding} addError={addError}
+        onDelete={deleteJob}
+      />
+    </main>
+  )
+}
+
+// ── App (router shell) ────────────────────────────────────────────────────────
+function App() {
   return (
     <BrowserRouter>
       <div>
-        <TopBar live={live} onToggleLive={() => setLive(l => !l)} lastSync={lastSync} />
+        <TopBar />
         <Routes>
           <Route path="/"         element={<Overview />} />
-          <Route path="/jobs"     element={<PlaceholderPage title="Jobs" />} />
+          <Route path="/jobs"     element={<JobsPage />} />
           <Route path="/backends" element={<PlaceholderPage title="Backends" />} />
           <Route path="/circuits" element={<PlaceholderPage title="Circuits" />} />
           <Route path="/logs"     element={<PlaceholderPage title="Logs" />} />
